@@ -1,7 +1,7 @@
 #include <WProgram.h>
 
 
-#define INTERRUPT_GRACE 1000ul
+#define INTERRUPT_GRACE 700ul
 
 
 #define PIN_LED_0 5
