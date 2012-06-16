@@ -69,14 +69,16 @@ if __name__=="__main__":
 	r = Race([1.0,1.0])
 	try:
 		while True:
-			r.add_lap(*h.get_event())
-			
-			print "r.num_laps  ", r.num_laps
-			print "r.total_time", r.total_time
-			print "r.avg_time  ", r.avg_time
-			print "r.max_speed ", r.max_speed
-			print "r.avg_speed ", r.avg_speed
-			print
+			evt = h.get_event()
+			if evt:
+				r.add_lap(*evt)
+				
+				print "r.num_laps  ", r.num_laps
+				print "r.total_time", r.total_time
+				print "r.avg_time  ", r.avg_time
+				print "r.max_speed ", r.max_speed
+				print "r.avg_speed ", r.avg_speed
+				print
 	
 	finally:
 		h.close()

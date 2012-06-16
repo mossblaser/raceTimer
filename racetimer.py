@@ -20,6 +20,8 @@ class RaceThread(Race, threading.Thread):
 		Race.__init__(self, [1,1])
 		threading.Thread.__init__(self)
 		
+		self._stop = False
+		
 		self.start()
 	
 	
@@ -28,13 +30,21 @@ class RaceThread(Race, threading.Thread):
 		self.hardware.reset()
 	
 	
+	def stop(self):
+		with self.lock:
+			self._stop = True
+	
+	
 	def run(self):
 		while True:
 			event = self.hardware.get_event()
 			with self.lock:
-				self.add_lap(*event)
+				if self._stop:
+					return
+				if event:
+					self.add_lap(*event)
 			
-			if self.on_update:
+			if event and self.on_update:
 				self.on_update()
 
 
@@ -69,7 +79,7 @@ class RaceTimer(RaceTimerFrame):
 	
 	
 	def on_quit_btn_clicked(self, event):
-		self.app.Exit()
+		self.Close()
 	
 	
 	def on_reset_btn_clicked(self, event):
@@ -118,5 +128,6 @@ if __name__=="__main__":
 		rt.Show()
 		app.MainLoop()
 	finally:
+		race.stop()
 		hardware.close()
 

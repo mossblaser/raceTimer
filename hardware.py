@@ -4,11 +4,12 @@ from serial import Serial
 
 class Hardware(object):
 	
-	def __init__(self, port = None):
-		self.con = Serial(port, 9600)
+	def __init__(self, port = None, timeout = 0.1):
+		self.con = Serial(port, 9600, timeout = timeout)
+		
+		self.buf = ""
 		
 		self.reset()
-	
 	
 	def reset(self):
 		self.last_lane_time = {}
@@ -21,11 +22,19 @@ class Hardware(object):
 		Returns (lane, laptime) with laptime in sec and 0 at start of first lap
 		"""
 		
-		lane, time = map(int, self.con.readline().strip().split(" "))
-		#self.last_lane_time[
+		val = self.con.read(1)
+		if val:
+			self.buf += val
+		
+		if val != "\n":
+			return None
+		
+		lane, time = map(int, self.buf.strip().split(" "))
+		self.buf = ""
 		
 		last_time = self.last_lane_time.setdefault(lane, time)
 		self.last_lane_time[lane] = time
+		
 		
 		return lane, (time - last_time) / 1000.0
 	
@@ -38,7 +47,9 @@ if __name__=="__main__":
 	h = Hardware("/dev/ttyUSB0")
 	try:
 		while True:
-			print h.get_event()
+			evt = h.get_event()
+			if evt:
+				print evt
 		
 	finally:
 		h.close()
