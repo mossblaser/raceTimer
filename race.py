@@ -43,6 +43,11 @@ class Race(object):
 	
 	
 	@property
+	def best_time(self):
+		return map((lambda l: min(l) if l else 0), self.laps)
+	
+	
+	@property
 	def speeds(self):
 		return map((lambda (ts,d): map((lambda t: d/t), ts)), zip(self.laps, self.lanes))
 	

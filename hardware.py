@@ -7,6 +7,10 @@ class Hardware(object):
 	def __init__(self, port = None):
 		self.con = Serial(port, 9600)
 		
+		self.reset()
+	
+	
+	def reset(self):
 		self.last_lane_time = {}
 	
 	

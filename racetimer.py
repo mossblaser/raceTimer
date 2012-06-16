@@ -1,112 +1,122 @@
 #!/usr/bin/python
 
-import sys
-
-import pygame
-from pygame.locals import *
-
 from race     import Race
 from hardware import Hardware
 
+import wx
+from ui import RaceTimerFrame
 
-class RaceTimer(object):
+
+import threading
+
+
+class RaceThread(Race, threading.Thread):
 	
-	
-	LARGE_HEIGHT = 0.1
-	SMALL_HEIGHT = 0.1
-	
-	BG_COLOUR = (0,0,0)
-	TITLE_COLOUR = (255,255,255)
-	
-	CHECKER_BG_COLOUR = (30,30,30)
-	CHECKER_FG_COLOUR = (200,200,200)
-	
-	@property
-	def title_height(self):
-		return int(RaceTimer.LARGE_HEIGHT * self.height)
-	
-	@property
-	def text_height(self):
-		return int(RaceTimer.SMALL_HEIGHT * self.height)
-	
-	
-	def __init__(self, width, height):
-		self.width  = width
-		self.height = height
+	def __init__(self, hardware, *args, **kwargs):
+		self.lock = threading.Lock()
+		self.on_update = None
+		self.hardware = hardware
 		
-		pygame.display.set_mode((width, height))
-		pygame.display.set_caption("Race Timer")
+		Race.__init__(self, [1,1])
+		threading.Thread.__init__(self)
 		
-		self.screen = pygame.display.get_surface()
-		
-		# Setup fonts
-		self.title_font = pygame.font.Font(pygame.font.match_font("Racer"), self.title_height)
-		self.text_font = pygame.font.Font(None, self.text_height)
-		
-		# Strings
-		self.title = self.title_font.render("RaceTimer", True, RaceTimer.TITLE_COLOUR)
-		
-		self.update()
+		self.start()
 	
 	
-	def update(self):
-		# Clear the screen
-		self.screen.fill(RaceTimer.BG_COLOUR)
-		
-		# Draw in the UI
-		self.draw_title()
-		
-		# Display it
-		pygame.display.flip()
+	def reset(self, lanes):
+		Race.reset(self, lanes)
+		self.hardware.reset()
 	
 	
-	def draw_checkers(self, rect):
-		pygame.draw.rect(self.screen, RaceTimer.CHECKER_BG_COLOUR, rect)
-		
-		height = int(rect.height * 0.8)
-		gap = (rect.height - height) / 2
-		
-		fg = True
-		
-		x = rect.left
-		while x < rect.right:
-			if fg:
-				c1,c2 = RaceTimer.CHECKER_FG_COLOUR, RaceTimer.CHECKER_BG_COLOUR
-			else:
-				c2,c1 = RaceTimer.CHECKER_FG_COLOUR, RaceTimer.CHECKER_BG_COLOUR
-			fg = not fg
+	def run(self):
+		while True:
+			event = self.hardware.get_event()
+			with self.lock:
+				self.add_lap(*event)
 			
-			pygame.draw.rect(self.screen, c1, Rect(x, rect.top + gap, height/2, height/2))
-			pygame.draw.rect(self.screen, c2, Rect(x, rect.top + (height/2) + gap, height/2, height/2))
-			x += height/2
+			if self.on_update:
+				self.on_update()
+
+
+
+class RaceTimer(RaceTimerFrame):
 	
-	
-	def draw_title(self):
-		x = self.width / 2 - self.title.get_width() / 2
-		y = self.title_height
-		self.screen.blit(self.title, (x,y))
+	def __init__(self, app, race, *args, **kwargs):
+		RaceTimerFrame.__init__(self, *args, **kwargs)
 		
-		gap = int(self.title_height * 0.1)
-		self.draw_checkers(Rect(0,0,self.width,self.title_height-gap))
-		self.draw_checkers(Rect(0,(self.title_height*2)+gap,self.width,self.title_height-gap))
+		self.app = app
+		self.race = race
+		
+		self.RACE_CHANGE = wx.NewEventType()
+		self.EVT_RACE_CHANGE = wx.PyEventBinder(self.RACE_CHANGE, 0)
+		self.Bind(self.EVT_RACE_CHANGE, self.on_race_change)
+		
+		def fire_race_change():
+			evt = wx.CommandEvent(self.RACE_CHANGE)
+			wx.PostEvent(self, evt)
+		
+		self.race.on_update = fire_race_change
+		
+		self.p1_lap_list.InsertColumn(0, "Lap", width=-1)
+		self.p1_lap_list.InsertColumn(1, "Time", width=-1)
+		self.p1_lap_list.InsertColumn(2, "Duration", width=-1)
+		
+		self.p2_lap_list.InsertColumn(0, "Lap", width=-1)
+		self.p2_lap_list.InsertColumn(1, "Time", width=-1)
+		self.p2_lap_list.InsertColumn(2, "Duration", width=-1)
+		
+		self.on_reset_btn_clicked(None)
 	
 	
-	def on_event(self, event):
-		pass
+	def on_quit_btn_clicked(self, event):
+		self.app.Exit()
+	
+	
+	def on_reset_btn_clicked(self, event):
+		with self.race.lock:
+			self.race.reset([1,1])
+			self.last_num_laps = self.race.num_laps
+		
+		self.p1_lap_list.DeleteAllItems()
+		self.p2_lap_list.DeleteAllItems()
+		self.on_race_change(None)
+	
+	
+	def on_race_change(self, event):
+		with self.race.lock:
+			p1, p2 = self.race.num_laps
+			self.p1_laps.SetLabel("%d"%p1)
+			self.p2_laps.SetLabel("%d"%p2)
+			
+			p1, p2 = self.race.avg_time
+			self.p1_avg_time.SetLabel("%0.2f sec"%p1)
+			self.p2_avg_time.SetLabel("%0.2f sec"%p2)
+			
+			p1, p2 = self.race.best_time
+			self.p1_best_time.SetLabel("%0.2f sec"%p1)
+			self.p2_best_time.SetLabel("%0.2f sec"%p2)
+			
+			for num, (old,new) in enumerate(zip(self.last_num_laps, self.race.num_laps)):
+				if old != new:
+					lap_list = [self.p1_lap_list, self.p2_lap_list][num]
+					pos = lap_list.InsertStringItem(0, "%d"%new)
+					lap_list.SetStringItem(pos,     1, "%0.2f"%(sum(self.race.laps[num])))
+					lap_list.SetStringItem(pos,     2, "%0.2f"%(self.race.laps[num][-1]))
+			self.last_num_laps = self.race.num_laps
+
 
 
 if __name__=="__main__":
-	pygame.init()
+	hardware = Hardware("/dev/ttyUSB0")
+	race = RaceThread(hardware, [1,1])
 	
-	#h = Hardware("/dev/ttyUSB0")
-	#r = Race([1,1])
-	
-	rt = RaceTimer(1024,768)
-	
-	while True:
-		event = pygame.event.wait()
-		if event.type == QUIT:
-			sys.exit(0)
-		else:
-			rt.on_event(event)
+	try:
+		app = wx.PySimpleApp(0)
+		wx.InitAllImageHandlers()
+		rt = RaceTimer(app, race, None, -1, "")
+		app.SetTopWindow(rt)
+		rt.Show()
+		app.MainLoop()
+	finally:
+		hardware.close()
 
